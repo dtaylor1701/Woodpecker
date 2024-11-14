@@ -1,6 +1,16 @@
 import FluentKit
 
-open class ModelService<Model: Storable> where Model.StorageModel: DatabaseModel & EagerLoadable {
+public protocol ModelServicing {
+  associatedtype Model: Storable where Model.StorageModel: DatabaseModel & EagerLoadable
+  func add(_ model: Model) async throws
+  func update(_ model: Model) async throws
+  func delete(_ model: Model) async throws
+  func all() async throws -> [Model]
+  func find(withId id: Model.StorageModel.IDValue) async throws -> Model?
+}
+
+open class ModelService<Model: Storable>: ModelServicing
+where Model.StorageModel: DatabaseModel & EagerLoadable {
   public let database: Database
   public init(database: Database) {
     self.database = database
