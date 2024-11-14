@@ -1,6 +1,6 @@
 import FluentKit
 
-public protocol ModelServicing {
+public protocol ModelServicing<Model> {
   associatedtype Model: Storable where Model.StorageModel: DatabaseModel & EagerLoadable
   func add(_ model: Model) async throws
   func update(_ model: Model) async throws
