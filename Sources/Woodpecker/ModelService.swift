@@ -14,7 +14,9 @@ where Model.StorageModel: DatabaseModel & EagerLoadable {
   public let databaseManager: DatabaseManager
 
   public var database: Database {
-    databaseManager.database
+    get async {
+      await databaseManager.database
+    }
   }
 
   public init(databaseManager: DatabaseManager) {

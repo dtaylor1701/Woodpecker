@@ -2,25 +2,13 @@ import FluentSQLiteDriver
 import Foundation
 
 /// The Database Manager is responsible for managing the local database.
-public class DatabaseManager {
-  public let configuration: SQLiteConfiguration
-  public var migrations = Migrations()
-  public var database: Database {
-    guard let eventLoop = eventLoopGroup?.next() else {
-      fatalError("DatabaseManager not setup. Call `start` before using.")
-    }
-
-    guard let database = databases?.database(logger: logger, on: eventLoop) else {
-      fatalError("Database does not exist.")
-    }
-
-    return database
-  }
-
+public actor DatabaseManager {
+  private let configuration: SQLiteConfiguration
   private var eventLoopGroup: EventLoopGroup?
   private var threadPool: NIOThreadPool?
   private var databases: Databases?
   private var logger: Logger = Logger(label: "database.logger")
+  private var migrations = Migrations()
   private var migrator: Migrator {
     guard let databases = databases, let eventLoop = eventLoopGroup?.next() else {
       fatalError("DatabaseManager not setup. Call `start` before using.")
@@ -31,6 +19,18 @@ public class DatabaseManager {
       migrations: migrations,
       logger: logger,
       on: eventLoop)
+  }
+
+  public var database: Database {
+    guard let eventLoop = eventLoopGroup?.next() else {
+      fatalError("DatabaseManager not setup. Call `start` before using.")
+    }
+
+    guard let database = databases?.database(logger: logger, on: eventLoop) else {
+      fatalError("Database does not exist.")
+    }
+
+    return database
   }
 
   public init(configuration: SQLiteConfiguration = .defaultConfiguration()) {
@@ -52,15 +52,9 @@ public class DatabaseManager {
 
   /// Starts the database manager and all of its dependencies. Must be called before use.
   public func start() async throws {
-    await setup()
-    try await migrator.setupIfNeeded().get()
-    try await migrator.prepareBatch().get()
-  }
-
-  private nonisolated func setup() async {
     // Priority passed explicitly to prevent thread sanitizer warning.
     // EventLoopGroup's init uses a dispatch queue with the default priority.
-    DispatchQueue.global().asyncAndWait {
+    await Task(priority: .medium) {
       let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
       self.eventLoopGroup = eventLoopGroup
       let threadPool = NIOThreadPool(numberOfThreads: 2)
@@ -70,7 +64,19 @@ public class DatabaseManager {
       databases.use(.sqlite(configuration), as: .sqlite)
       databases.default(to: .sqlite)
       self.databases = databases
-    }
+    }.value
+    try await migrator.setupIfNeeded().get()
+    try await migrator.prepareBatch().get()
+  }
+
+  /// Add migrations to be run on the database when `start` is called.
+  public func add(migrations: [any Migration]) {
+    self.migrations.add(migrations)
+  }
+
+  /// Add a migration to be run on the database when `start` is called.
+  public func add(migration: any Migration) {
+    self.migrations.add(migration)
   }
 }
 

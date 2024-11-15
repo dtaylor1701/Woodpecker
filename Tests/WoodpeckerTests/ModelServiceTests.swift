@@ -9,7 +9,7 @@ final class ModelServiceTests {
 
   init() async throws {
     databaseManager = DatabaseManager(configuration: .memory)
-    databaseManager.migrations.add(Stored.IngredientCreateMigration())
+    await databaseManager.add(migration: Stored.IngredientCreateMigration())
     try await databaseManager.start()
     service = .init(databaseManager: databaseManager)
   }
