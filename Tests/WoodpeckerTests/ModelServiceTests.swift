@@ -11,7 +11,7 @@ final class ModelServiceTests {
     databaseManager = DatabaseManager(configuration: .memory)
     databaseManager.migrations.add(Stored.IngredientCreateMigration())
     try await databaseManager.start()
-    service = .init(database: databaseManager.database)
+    service = .init(databaseManager: databaseManager)
   }
 
   @Test func add() async throws {

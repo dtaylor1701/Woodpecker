@@ -11,9 +11,14 @@ public protocol ModelServicing<Model> {
 
 open class ModelService<Model: Storable>: ModelServicing
 where Model.StorageModel: DatabaseModel & EagerLoadable {
-  public let database: Database
-  public init(database: Database) {
-    self.database = database
+  public let databaseManager: DatabaseManager
+
+  public var database: Database {
+    databaseManager.database
+  }
+
+  public init(databaseManager: DatabaseManager) {
+    self.databaseManager = databaseManager
   }
 
   public func add(_ model: Model) async throws {
