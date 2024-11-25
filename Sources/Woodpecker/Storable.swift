@@ -1,7 +1,7 @@
 import Foundation
 
 /// A protocol for models that can be stored in a persistent store.
-public protocol Storable {
+public protocol Storable: Identifiable {
   /// The type of the storage model that this model is stored in.
   associatedtype StorageModel
 
