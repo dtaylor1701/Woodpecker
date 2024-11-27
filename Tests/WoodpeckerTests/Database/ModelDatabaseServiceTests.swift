@@ -90,6 +90,26 @@ final class ModelDatabaseServiceTests {
     #expect(toUpdate.siblings.first?.id == saved.siblings.first?.id)
   }
   
+  @Test func updateChild() async throws {
+    var toUpdate = Ingredient(name: "chips", children: [], siblings: [])
+    let child = Child(name: "Some child", ingredient: toUpdate)
+    let sibling = Sibling(name: "Some sibling")
+    try await sibling.asStorageModel().save(on: database)
+    toUpdate.children.append(child)
+    toUpdate.siblings.append(sibling)
+    try await service.add(toUpdate)
+    let existing = try await service.all()
+    toUpdate = try #require(existing.first { $0.id == toUpdate.id })
+    var toUpdateChild = toUpdate.children[0]
+    toUpdateChild.name = "Updated child"
+    toUpdate.children[0] = toUpdateChild
+    try await service.update(toUpdate)
+    let updated = try await service.all()
+    let saved = try #require(updated.first { $0.id == toUpdate.id })
+    
+    #expect("Updated child" == saved.children[0].name)
+  }
+  
   @Test func delete() async throws {
     var toDelete = Ingredient(name: "chips", children: [], siblings: [])
     let child = Child(name: "Some child", ingredient: toDelete)

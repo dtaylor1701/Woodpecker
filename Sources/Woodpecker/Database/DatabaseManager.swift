@@ -52,15 +52,19 @@ public actor DatabaseManager {
 
   /// Starts the database manager and all of its dependencies. Must be called before use.
   public func start() async throws {
-    let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
-    self.eventLoopGroup = eventLoopGroup
-    let threadPool = NIOThreadPool(numberOfThreads: 2)
-    threadPool.start()
-    self.threadPool = threadPool
-    let databases = Databases(threadPool: threadPool, on: eventLoopGroup)
-    databases.use(.sqlite(configuration), as: .sqlite)
-    databases.default(to: .sqlite)
-    self.databases = databases
+    // Priority passed explicitly to prevent thread sanitizer warning.
+    // EventLoopGroup's init uses a dispatch queue with the default priority.
+    await Task(priority: .medium) {
+      let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+      self.eventLoopGroup = eventLoopGroup
+      let threadPool = NIOThreadPool(numberOfThreads: 2)
+      threadPool.start()
+      self.threadPool = threadPool
+      let databases = Databases(threadPool: threadPool, on: eventLoopGroup)
+      databases.use(.sqlite(configuration), as: .sqlite)
+      databases.default(to: .sqlite)
+      self.databases = databases
+    }.value
     try await migrator.setupIfNeeded().get()
     try await migrator.prepareBatch().get()
   }
