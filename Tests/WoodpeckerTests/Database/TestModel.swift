@@ -3,14 +3,13 @@ import Foundation
 import Woodpecker
 
 struct Ingredient: Codable, Identifiable {
-  let id: UUID
-  var stored: Bool = false
+  var id: StorableID
 
   var name: String
   var children: [Child]
   var siblings: [Sibling]
 
-  init(id: UUID = UUID(), name: String, children: [Child], siblings: [Sibling]) {
+  init(id: ID = .new(), name: String, children: [Child], siblings: [Sibling]) {
     self.id = id
     self.name = name
     self.children = children
@@ -19,30 +18,28 @@ struct Ingredient: Codable, Identifiable {
 }
 
 struct Child: Codable, Identifiable {
-  let id: UUID
-  var stored: Bool = false
-  let ingredientID: UUID
+  var id: StorableID
+  let ingredientID: StorableID
 
   var name: String
 
-  init(id: UUID = UUID(), name: String, ingredientID: UUID) {
+  init(id: StorableID = .new(), name: String, ingredientID: StorableID) {
     self.id = id
     self.name = name
     self.ingredientID = ingredientID
   }
 
-  init(id: UUID = UUID(), name: String, ingredient: Ingredient) {
+  init(id: StorableID = .new(), name: String, ingredient: Ingredient) {
     self.init(id: id, name: name, ingredientID: ingredient.id)
   }
 }
 
 struct Sibling: Codable, Identifiable {
-  let id: UUID
-  var stored: Bool = false
+  var id: StorableID
 
   var name: String
 
-  init(id: UUID = UUID(), name: String) {
+  init(id: StorableID = .new(), name: String) {
     self.id = id
     self.name = name
   }
@@ -50,6 +47,8 @@ struct Sibling: Codable, Identifiable {
 
 enum Stored {
   final class Ingredient: DatabaseModel, @unchecked Sendable {
+    typealias AppModel = WoodpeckerTests.Ingredient
+
     static let schema: String = "ingredients"
 
     @ID(key: .id)
@@ -66,27 +65,25 @@ enum Stored {
 
     init() {}
 
-    init(id: UUID, name: String) {
-      self.id = id
+    init(id: StorableID, name: String) {
       self.name = name
+      updateStorableID(id)
     }
 
-    func relationships() -> [any Woodpecker.ModelRelationship<WoodpeckerTests.Ingredient>] {
-      [
-        ChildRelationship<
-          WoodpeckerTests.Ingredient, WoodpeckerTests.Child
-        >(
-          modelPath: \.children, storageProperty: $children),
-        SiblingRelationship<
-          WoodpeckerTests.Ingredient, WoodpeckerTests.Sibling, Stored.IngredientSibling
-        >(modelPath: \.siblings, storageProperty: $siblings),
-      ]
-    }
+    public static let relationships:
+      [any Woodpecker.ModelRelationship<WoodpeckerTests.Ingredient>] =
+        [
+          ChildRelationship<
+            WoodpeckerTests.Ingredient, WoodpeckerTests.Child
+          >(
+            modelPath: \.children, relationshipPropertyPath: \.$children),
+          SiblingRelationship<
+            WoodpeckerTests.Ingredient, WoodpeckerTests.Sibling, Stored.IngredientSibling
+          >(modelPath: \.siblings, relationshipPropertyPath: \.$siblings),
+        ]
 
-    static func withRelationships(in query: FluentKit.QueryBuilder<Stored.Ingredient>)
-      -> FluentKit.QueryBuilder<Stored.Ingredient>
-    {
-      query.with(\.$children).with(\.$siblings)
+    static func create(fromAppModel appModel: WoodpeckerTests.Ingredient) -> Self {
+      Self(id: appModel.id, name: appModel.name)
     }
   }
 
@@ -104,6 +101,8 @@ enum Stored {
   }
 
   final class Child: DatabaseModel, @unchecked Sendable {
+    typealias AppModel = WoodpeckerTests.Child
+
     static let schema: String = "children"
 
     @ID(key: .id)
@@ -117,20 +116,14 @@ enum Stored {
 
     init() {}
 
-    init(id: UUID, name: String, ingredientID: Ingredient.IDValue) {
-      self.id = id
+    init(id: StorableID, name: String, ingredientID: Ingredient.IDValue) {
       self.name = name
       self.$ingredient.id = ingredientID
+      updateStorableID(id)
     }
 
-    static func withRelationships(in query: FluentKit.QueryBuilder<Stored.Child>)
-      -> FluentKit.QueryBuilder<Child>
-    {
-      return query
-    }
-
-    func relationships() -> [any ModelRelationship<WoodpeckerTests.Child>] {
-      []
+    static func create(fromAppModel appModel: WoodpeckerTests.Child) -> Self {
+      Self(id: appModel.id, name: appModel.name, ingredientID: appModel.ingredientID.value)
     }
   }
 
@@ -149,15 +142,7 @@ enum Stored {
   }
 
   final class Sibling: DatabaseModel, @unchecked Sendable {
-    static func withRelationships(in query: FluentKit.QueryBuilder<Stored.Sibling>)
-      -> FluentKit.QueryBuilder<Stored.Sibling>
-    {
-      return query
-    }
-
-    func relationships() -> [any ModelRelationship<WoodpeckerTests.Sibling>] {
-      []
-    }
+    typealias AppModel = WoodpeckerTests.Sibling
 
     static let schema: String = "siblings"
 
@@ -169,9 +154,13 @@ enum Stored {
 
     init() {}
 
-    init(id: UUID, name: String) {
-      self.id = id
+    init(id: StorableID, name: String) {
       self.name = name
+      updateStorableID(id)
+    }
+
+    static func create(fromAppModel appModel: WoodpeckerTests.Sibling) -> Self {
+      Self(id: appModel.id, name: appModel.name)
     }
   }
 
@@ -217,43 +206,26 @@ enum Stored {
 }
 
 extension Ingredient: Storable {
-  static func createStorageModel(from model: Ingredient) -> Stored.Ingredient {
-    Stored.Ingredient(
-      id: model.id,
-      name: model.name
-    )
-    .asExisting(model.stored)
-  }
-
   static func create(fromStorageModel storageModel: Stored.Ingredient) throws -> Ingredient {
     try Ingredient(
-      id: storageModel.requireID(),
+      id: .from(storageModel: storageModel),
       name: storageModel.name,
-      children: storageModel.children.map { try Child.createExisting(fromStorageModel: $0) },
-      siblings: storageModel.siblings.map { try Sibling.createExisting(fromStorageModel: $0) })
+      children: [Child].create(fromStorageModels: storageModel.children),
+      siblings: [Sibling].create(fromStorageModels: storageModel.siblings))
   }
 }
 
 extension Child: Storable {
   static func create(fromStorageModel storageModel: Stored.Child) throws -> Child {
     try Child(
-      id: storageModel.requireID(), name: storageModel.name,
-      ingredientID: storageModel.$ingredient.id)
-  }
-
-  static func createStorageModel(from model: Child) -> Stored.Child {
-    Stored.Child(id: model.id, name: model.name, ingredientID: model.ingredientID).asExisting(
-      model.stored)
+      id: .from(storageModel: storageModel),
+      name: storageModel.name,
+      ingredientID: .stored(storageModel.$ingredient.id))
   }
 }
 
 extension Sibling: Storable {
   static func create(fromStorageModel storageModel: Stored.Sibling) throws -> Sibling {
-    try Sibling(id: storageModel.requireID(), name: storageModel.name)
-
-  }
-
-  static func createStorageModel(from model: Sibling) -> Stored.Sibling {
-    Stored.Sibling(id: model.id, name: model.name).asExisting(model.stored)
+    try Sibling(id: .from(storageModel: storageModel), name: storageModel.name)
   }
 }

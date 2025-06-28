@@ -1,43 +1,39 @@
 import Foundation
 
 /// A protocol for models that can be stored in a persistent store.
-public protocol Storable: Identifiable {
+public protocol Storable: Identifiable, Sendable {
   /// The type of the storage model that this model is stored in.
-  associatedtype StorageModel
+  associatedtype StorageModel: StorableStorageModel where StorageModel.AppModel == Self
 
   /// Creates a new instance of the model from its storage model representation.
   static func create(fromStorageModel storageModel: StorageModel) throws -> Self
-  /// Creates a new storage model representation of the model.
-  static func createStorageModel(from model: Self) -> StorageModel
 
-  /// True if the model is stored in a persistent store, false otherwise.
-  var stored: Bool { get set }
+  /// The storable ID of the model.
+  var id: StorableID { get set }
 }
 
 extension Storable {
-  func existingInStore() -> Self {
-    var model = self
-    model.stored = true
-    return model
+  /// If this model has been stored.
+  public var stored: Bool {
+    id.stored
   }
 
+  /// The storage representation of this model.
   public func asStorageModel() -> StorageModel {
-    Self.createStorageModel(from: self)
-  }
-
-  public static func createExisting(fromStorageModel storageModel: StorageModel) throws -> Self {
-    try Self.create(fromStorageModel: storageModel).existingInStore()
+    .create(fromAppModel: self)
   }
 }
 
 extension Array where Element: Storable {
+  /// The storage representation of this array of models.
   public func asStorageModels() -> [Element.StorageModel] {
     map { $0.asStorageModel() }
   }
 
-  public static func createExisting(fromStorageModels storageModels: [Element.StorageModel]) throws
+  /// Create an instance of these model from their storage representation.
+  public static func create(fromStorageModels storageModels: [Element.StorageModel]) throws
     -> [Element]
   {
-    try storageModels.map { try Element.createExisting(fromStorageModel: $0) }
+    try storageModels.map { try .create(fromStorageModel: $0) }
   }
 }
