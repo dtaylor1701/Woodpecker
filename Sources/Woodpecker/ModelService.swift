@@ -4,9 +4,11 @@ public protocol ModelServicing<Model>: Sendable {
   associatedtype Model: Storable
 
   /// Adds a new `model` to the service and returns it.
+  @discardableResult
   func add(_ model: Model) async throws -> Model
 
   /// Updates an existing `model` in the service and returns it.
+  @discardableResult
   func update(_ model: Model) async throws -> Model
 
   /// Deletes an existing `model` from the service and returns.

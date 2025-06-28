@@ -41,7 +41,6 @@ where
 
   /// MARK: - CRUD
 
-  @discardableResult
   public func add(_ model: Model) async throws -> Model {
     let result = try await attemptRemoteUpdate {
       try await remoteService.add(model)
@@ -54,7 +53,6 @@ where
     return result
   }
 
-  @discardableResult
   public func update(_ model: Model) async throws -> Model {
     let result = try await attemptRemoteUpdate {
       try await remoteService.update(model)

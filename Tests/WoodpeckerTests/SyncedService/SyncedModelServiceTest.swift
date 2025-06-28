@@ -107,18 +107,14 @@ final class SyncedModelServiceTests {
     let secondNewChild = Child(name: "Child two", ingredient: toUpdate)
     let secondNewSibling = Sibling(name: "Sibling two")
     try await siblingService.add(firstNewSibling)
-    print("~~ adding new sibling")
     try await siblingService.add(secondNewSibling)
-    print("~~ adding second new sibling")
     toUpdate.children.append(firstNewChild)
     toUpdate.siblings.append(firstNewSibling)
     toUpdate.children.append(secondNewChild)
     toUpdate.siblings.append(secondNewSibling)
 
     try await service.update(toUpdate)
-    print("~~ updating again")
     saved = try #require(try await service.find(withId: toUpdate.id))
-    print("~~ finding again")
 
     #expect(toUpdate.children.count == saved.children.count)
     #expect(toUpdate.children.first?.id.value == saved.children.first?.id.value)
