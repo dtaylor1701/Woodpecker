@@ -197,4 +197,13 @@ final class SyncedModelServiceTests {
     #expect(remoteIngredient.siblings.count == serviceIngredient.siblings.count)
     #expect(remoteIngredient.siblings.first?.id.value == serviceIngredient.siblings.first?.id.value)
   }
+
+  @Test func withoutDependencyManager() async throws {
+    let siblingLocalService = ModelDatabaseService<Sibling>(databaseManager: databaseManager)
+    let aloneSiblingService = try await SyncedModelService(
+      remoteService: TestRemoteService<Sibling>.forSiblings(), localService: siblingLocalService)
+
+    let siblings = try await aloneSiblingService.all()
+    #expect(siblings.count > 0)
+  }
 }

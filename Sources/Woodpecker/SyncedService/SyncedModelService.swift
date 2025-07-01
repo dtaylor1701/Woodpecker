@@ -5,10 +5,13 @@ public protocol SyncedServicing<SyncContext>: Sendable {
 
   var serviceID: UUID { get }
 
+  // Synchronize the local state with the remote state.
   func sync() async throws
 
+  // Clear out the local state.
   func clear(withContext context: SyncContext) async throws
 
+  // Populate the local state.
   func populate(withContext context: SyncContext) async throws
 }
 
@@ -27,12 +30,12 @@ where
   public let remoteService: RemoteService
   public let localService: LocalService
   public let serviceID = UUID()
-  public let dependencyManager: DependencyManager<SyncContext>
+  public let dependencyManager: DependencyManager<SyncContext>?
 
   public init(
     remoteService: RemoteService,
     localService: LocalService,
-    dependencyManager: DependencyManager<SyncContext> = DependencyManager<SyncContext>()
+    dependencyManager: DependencyManager<SyncContext>? = nil
   ) {
     self.remoteService = remoteService
     self.localService = localService
@@ -92,8 +95,7 @@ where
   public func sync() async throws {
     guard try await localService.isStale() else { return }
 
-    let dependencySortedServices = try await dependencyManager.dependencySortedServices(
-      forService: self)
+    let dependencySortedServices = try await dependencySortedServices()
     try await localService.withContext { context in
       for service in dependencySortedServices.reversed() {
         try await service.clear(withContext: context)
@@ -112,6 +114,12 @@ where
   public func populate(withContext context: SyncContext) async throws {
     try await localService.populate(
       with: remoteService, context: context)
+  }
+
+  public func dependencySortedServices() async throws -> [any SyncedServicing<SyncContext>] {
+    guard let dependencyManager else { return [self] }
+
+    return try await dependencyManager.dependencySortedServices(forService: self)
   }
 
   // MARK: - Utilities
