@@ -78,6 +78,18 @@ public actor DatabaseManager {
   public func add(migration: any Migration) {
     self.migrations.add(migration)
   }
+
+  /// Revert all migrations.
+  public func revert() async throws {
+    try await migrator.revertAllBatches().get()
+  }
+
+  /// Clear all data from the database and rebuild.
+  public func reset() async throws {
+    try await revert()
+    try await migrator.setupIfNeeded().get()
+    try await migrator.prepareBatch().get()
+  }
 }
 
 extension SQLiteConfiguration {
