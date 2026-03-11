@@ -160,7 +160,7 @@ final class ModelDatabaseServiceTests {
     var isStale = try await service.isStale()
     #expect(isStale == true)
     try await service.withContext { context in
-      try await service.populate(with: remoteService, context: context)
+      try await service.populate(with: remoteService, conflictResolutionStrategy: nil, context: context)
     }
 
     let serviceModels = try await service.all()

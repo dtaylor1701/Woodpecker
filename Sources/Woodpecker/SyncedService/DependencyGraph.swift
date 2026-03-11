@@ -5,12 +5,9 @@ public struct DependencyGraph<SyncContext> {
 
   struct Node {
     let service: Service
-    var dependencies: [Node] = []
+    var dependencyIDs: Set<UUID> = []
 
     var serviceID: UUID { service.serviceID }
-    var dependencyServices: [Service] {
-      dependencies.map(\.service)
-    }
 
     init(_ service: Service) {
       self.service = service
@@ -28,9 +25,10 @@ public struct DependencyGraph<SyncContext> {
   mutating func add(_ service: Service, with dependencies: [Service] = []) {
     var serviceNode = nodeForServiceID[service.serviceID] ?? Node(service)
     for dependency in dependencies {
-      let dependencyNode = nodeForServiceID[dependency.serviceID] ?? Node(dependency)
-      serviceNode.dependencies.append(dependencyNode)
-      nodeForServiceID[dependency.serviceID] = dependencyNode
+      serviceNode.dependencyIDs.insert(dependency.serviceID)
+      if nodeForServiceID[dependency.serviceID] == nil {
+        nodeForServiceID[dependency.serviceID] = Node(dependency)
+      }
     }
     nodeForServiceID[service.serviceID] = serviceNode
   }
@@ -39,43 +37,54 @@ public struct DependencyGraph<SyncContext> {
     var newGraph = self
 
     for node in nodeForServiceID.values {
-      newGraph.add(node.service, with: node.dependencyServices)
+      newGraph.add(node.service, with: node.dependencyIDs.compactMap { nodeForServiceID[$0]?.service })
     }
 
     for node in graph.nodeForServiceID.values {
-      newGraph.add(node.service, with: node.dependencyServices)
+      newGraph.add(node.service, with: node.dependencyIDs.compactMap { graph.nodeForServiceID[$0]?.service })
     }
 
     return newGraph
   }
 
   func dependencySortedServices() -> [Service] {
-    Self.topologicalSort(nodes: nodeForServiceID.values).map(\.service)
+    topologicalSort().map { nodeForServiceID[$0]!.service }
   }
 
   // MARK: - Implementations
 
-  private static func topologicalSort(nodes: any Sequence<Node>) -> [Node] {
-    var stack: [Node] = []
+  private func topologicalSort() -> [UUID] {
+    var stack: [UUID] = []
     var visited: Set<UUID> = []
+    var visiting: Set<UUID> = []
 
-    for node in nodes {
-      depthFirstSearch(node, visited: &visited, stack: &stack)
+    for serviceID in nodeForServiceID.keys {
+      depthFirstSearch(serviceID, visited: &visited, visiting: &visiting, stack: &stack)
     }
 
     return stack
   }
 
-  private static func depthFirstSearch(_ node: Node, visited: inout Set<UUID>, stack: inout [Node])
+  private func depthFirstSearch(_ serviceID: UUID, visited: inout Set<UUID>, visiting: inout Set<UUID>, stack: inout [UUID])
   {
-    guard !visited.contains(node.serviceID) else { return }
-
-    visited.insert(node.serviceID)
-
-    for dependency in node.dependencies where !visited.contains(dependency.serviceID) {
-      depthFirstSearch(dependency, visited: &visited, stack: &stack)
+    if visiting.contains(serviceID) {
+      // Circular dependency!
+      return
+    }
+    if visited.contains(serviceID) {
+      return
     }
 
-    stack.append(node)
+    visiting.insert(serviceID)
+
+    if let node = nodeForServiceID[serviceID] {
+      for dependencyID in node.dependencyIDs {
+        depthFirstSearch(dependencyID, visited: &visited, visiting: &visiting, stack: &stack)
+      }
+    }
+
+    visiting.remove(serviceID)
+    visited.insert(serviceID)
+    stack.append(serviceID)
   }
 }

@@ -1,5 +1,10 @@
 import Foundation
 
+public enum SyncStrategy: Sendable {
+  case fullReplace
+  case merge(any ConflictResolutionStrategy)
+}
+
 public protocol SyncedServicing<SyncContext>: Sendable {
   associatedtype SyncContext: Sendable
 
@@ -12,7 +17,7 @@ public protocol SyncedServicing<SyncContext>: Sendable {
   func clear(withContext context: SyncContext) async throws
 
   // Populate the local state.
-  func populate(withContext context: SyncContext) async throws
+  func populate(withContext context: SyncContext, strategy: SyncStrategy) async throws
 }
 
 public actor SyncedModelService<
@@ -31,15 +36,18 @@ where
   public let localService: LocalService
   public let serviceID = UUID()
   public let dependencyManager: DependencyManager<SyncContext>?
+  public let syncStrategy: SyncStrategy
 
   public init(
     remoteService: RemoteService,
     localService: LocalService,
-    dependencyManager: DependencyManager<SyncContext>? = nil
+    dependencyManager: DependencyManager<SyncContext>? = nil,
+    syncStrategy: SyncStrategy = .fullReplace
   ) {
     self.remoteService = remoteService
     self.localService = localService
     self.dependencyManager = dependencyManager
+    self.syncStrategy = syncStrategy
   }
 
   /// MARK: - CRUD
@@ -96,13 +104,20 @@ where
     guard try await localService.isStale() else { return }
 
     let dependencySortedServices = try await dependencySortedServices()
-    try await localService.withContext { context in
-      for service in dependencySortedServices.reversed() {
-        try await service.clear(withContext: context)
-      }
+    try await localService.withContext { [self] context in
+      switch self.syncStrategy {
+      case .fullReplace:
+        for service in dependencySortedServices.reversed() {
+          try await service.clear(withContext: context)
+        }
 
-      for service in dependencySortedServices {
-        try await service.populate(withContext: context)
+        for service in dependencySortedServices {
+          try await service.populate(withContext: context, strategy: .fullReplace)
+        }
+      case .merge:
+        for service in dependencySortedServices {
+          try await service.populate(withContext: context, strategy: self.syncStrategy)
+        }
       }
     }
   }
@@ -111,9 +126,16 @@ where
     try await localService.clear(withContext: context)
   }
 
-  public func populate(withContext context: SyncContext) async throws {
+  public func populate(withContext context: SyncContext, strategy: SyncStrategy) async throws {
+    let conflictStrategy: (any ConflictResolutionStrategy)?
+    if case .merge(let s) = strategy {
+      conflictStrategy = s
+    } else {
+      conflictStrategy = nil
+    }
+
     try await localService.populate(
-      with: remoteService, context: context)
+      with: remoteService, conflictResolutionStrategy: conflictStrategy, context: context)
   }
 
   public func dependencySortedServices() async throws -> [any SyncedServicing<SyncContext>] {

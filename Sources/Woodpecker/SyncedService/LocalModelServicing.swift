@@ -14,5 +14,6 @@ public protocol LocalModelServicing<Model>: ModelServicing, Sendable {
 
   func populate(
     with remoteService: any ModelServicing<Model>,
+    conflictResolutionStrategy: (any ConflictResolutionStrategy)?,
     context: SyncContext) async throws
 }

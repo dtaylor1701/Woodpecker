@@ -13,7 +13,7 @@ extension ModelDatabaseService: LocalModelServicing {
     async throws
   {
     try await database.transaction { database in
-      try await perform(SyncContext(database: database))
+      try await perform(DatabaseSyncContext(database: database))
     }
   }
 
@@ -30,11 +30,35 @@ extension ModelDatabaseService: LocalModelServicing {
 
   public func populate(
     with remoteService: any ModelServicing<Model>,
+    conflictResolutionStrategy: (any ConflictResolutionStrategy)?,
     context: DatabaseSyncContext
   ) async throws {
     let remoteModels = try await remoteService.all()
-    for model in remoteModels {
-      _ = try await Self.add(model, on: context.database)
+    if let strategy = conflictResolutionStrategy {
+      let localModels = try await Self.all(on: context.database)
+      let localByID = Dictionary(grouping: localModels, by: { $0.id.value }).compactMapValues { $0.first }
+      let remoteIDs = Set(remoteModels.map { $0.id.value })
+      
+      for remoteModel in remoteModels {
+        if let localModel = localByID[remoteModel.id.value] {
+          var resolved = strategy.resolve(local: localModel, remote: remoteModel)
+          // Ensure the resolved model is marked as stored so the database update succeeds.
+          resolved.id = resolved.id.asStored()
+          _ = try await Self.update(resolved, on: context.database)
+        } else {
+          _ = try await Self.add(remoteModel, on: context.database)
+        }
+      }
+      
+      // Delete local models not in remote.
+      for localModel in localModels where !remoteIDs.contains(localModel.id.value) {
+        try await Self.delete(localModel, on: context.database)
+      }
+    } else {
+      // Original full-replace-style populate (assuming clear was called).
+      for model in remoteModels {
+        _ = try await Self.add(model, on: context.database)
+      }
     }
     try await updateState(stale: false, database: context.database)
   }
